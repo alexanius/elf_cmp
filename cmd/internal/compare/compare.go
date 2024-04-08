@@ -26,6 +26,7 @@ type FileInfo struct {
   Dbg         string    // Has debug info
   Size        uint64    // Total size of file
   SectionNum  int       // Number of all sections
+  SymbolNum   int       // Number of all symbols
 
   DebugSec    map[string]*elf.Section   // Sections with debug information
   InstrSec    map[string]*elf.Section   // Sections with executable instructions
@@ -33,6 +34,8 @@ type FileInfo struct {
   GoSec       map[string]*elf.Section   // Sections related to Go lang
   CompilerSec map[string]*elf.Section   // Sections with compiler data
   OtherSec    map[string]*elf.Section   // All other sections
+
+  OtherSym    map[string]*elf.Symbol    // All other symbols in a file
 }
 
 var A, B *FileInfo
@@ -71,15 +74,6 @@ func compareHeaders(f1, f2 *elf.File) {
 
   A.Type = f1.Type
   B.Type = f2.Type
-
-/*  Report.AddHeaderRow(f1.Class.String(), "Class", f2.Class.String())
-  Report.AddHeaderRow(f1.Data.String(), "Data", f2.Data.String())
-  Report.AddHeaderRow(f1.Version.String(), "Version", f2.Version.String())
-  Report.AddHeaderRow(f1.OSABI.String(), "OSABI", f2.OSABI.String())
-  Report.AddHeaderRow(strconv.Itoa(int(f1.ABIVersion)), "ABIVersion", strconv.Itoa(int(f2.ABIVersion)))
-  Report.AddHeaderRow(f1.ByteOrder.String(), "ByteOrder", f2.ByteOrder.String())
-  Report.AddHeaderRow(f1.Machine.String(), "Machine", f2.Machine.String())
-  Report.AddHeaderRow(strconv.FormatUint(f1.Entry, 16), "Entry", strconv.FormatUint(f2.Entry, 16))*/
 }
 
 func compareSections(f1, f2 *elf.File) {
@@ -180,6 +174,23 @@ func compareSections(f1, f2 *elf.File) {
   }
 }
 
+func compareSymbols(f1, f2 *elf.File) {
+  s1, err := f1.Symbols()
+  if err != nil {
+    panic("Err")
+  }
+  A.SymbolNum = len(s1)
+  s2, err := f2.Symbols()
+  if err != nil {
+    panic("Err")
+  }
+  B.SymbolNum = len(s2)
+
+  for _, s := range s1 {
+    fmt.Printf("%x %d %s\n", s.Value, s.Info, s.Name)
+  }
+}
+
 // analyzeSectionGroup takes a particular group of sections, counts their total
 // size and adds the rows with sections size and total size into table
 func analyzeSectionGroup(aS, bS map[string]*elf.Section, gName string) {
@@ -218,8 +229,11 @@ func fillTable() {
   Report.AddTextRow ("Sections",
     fmt.Sprintf("%d", A.SectionNum),
     fmt.Sprintf("%d", B.SectionNum))
+  Report.AddTextRow ("Symbols",
+    fmt.Sprintf("%d", A.SymbolNum),
+    fmt.Sprintf("%d", B.SymbolNum))
   Report.AddIntRow ("Size", A.Size, B.Size)
-  Report.AddSubtitle("Sections")
+  Report.AddSubtitle("Sections size (bytes)")
 
   analyzeSectionGroup(A.InstrSec, B.InstrSec, "Instr")
   analyzeSectionGroup(A.UDataSec, B.UDataSec, "User data")
@@ -227,6 +241,8 @@ func fillTable() {
   analyzeSectionGroup(A.CompilerSec, B.CompilerSec, "Compiler data")
   analyzeSectionGroup(A.DebugSec, B.DebugSec, "Debug info")
   analyzeSectionGroup(A.OtherSec, B.OtherSec, "Other")
+
+  Report.AddSubtitle("Sections symbols number")
 }
 
 func Compare(fname1, fname2 string) error {
@@ -245,6 +261,7 @@ func Compare(fname1, fname2 string) error {
 
   compareHeaders(elf1, elf2)
   compareSections(elf1, elf2)
+  compareSymbols(elf1, elf2)
   compareStat(f1, f2)
   fillTable()
   Report.Print()

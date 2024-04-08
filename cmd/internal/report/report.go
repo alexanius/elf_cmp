@@ -118,7 +118,7 @@ func (r *Report) AddSubtitle(name string) {
     AutoMerge:      true,
     AutoMergeAlign: text.AlignLeft}
   r.Stat.AppendSeparator()
-  r.Stat.AppendRow(table.Row{name, name, name, name}, rowConfigAutoMerge)
+  r.Stat.AppendRow(table.Row{name, name, name, name, name}, rowConfigAutoMerge)
   r.Stat.AppendSeparator()
 }
 
