@@ -3,9 +3,8 @@ package compare
 import (
   "debug/elf"
   "fmt"
-  "os"
-  "strings"
 
+  "elf_cmp/cmd/internal/file"
   "elf_cmp/cmd/internal/report"
 )
 
@@ -21,188 +20,104 @@ var ElfType = map[elf.Type]string{
   elf.ET_HIPROC : "Processor-specific",
 }
 
-type FileInfo struct {
-  Type        elf.Type  // Elf type
-  Dbg         string    // Has debug info
-  Size        uint64    // Total size of file
-  SectionNum  int       // Number of all sections
-  SymbolNum   int       // Number of all symbols
-
-  DebugSec    map[string]*elf.Section   // Sections with debug information
-  InstrSec    map[string]*elf.Section   // Sections with executable instructions
-  UDataSec    map[string]*elf.Section   // Sections with user data
-  GoSec       map[string]*elf.Section   // Sections related to Go lang
-  CompilerSec map[string]*elf.Section   // Sections with compiler data
-  OtherSec    map[string]*elf.Section   // All other sections
-
-  OtherSym    map[string]*elf.Symbol    // All other symbols in a file
-}
-
-var A, B *FileInfo
-
-func newFileInfo() *FileInfo{
-  var res FileInfo
-  res.Dbg = "no"
-  res.DebugSec    = make(map[string]*elf.Section)
-  res.InstrSec    = make(map[string]*elf.Section)
-  res.UDataSec    = make(map[string]*elf.Section)
-  res.GoSec       = make(map[string]*elf.Section)
-  res.CompilerSec = make(map[string]*elf.Section)
-  res.OtherSec    = make(map[string]*elf.Section)
-  return &res
-}
+var A, B *file.FileInfo
 
 var Report *report.Report
 
-func readElf(name string) (*os.File, *elf.File, error) {
-    f, err := os.Open(name)
-    if err != nil {
-        return nil, nil, fmt.Errorf("Failed to open elf: %w", err)
-    }
-    resElf, err := elf.NewFile(f)
-    return f, resElf, err
-}
+func compareSections(f1, f2 *file.FileInfo) {
 
-func compareStat(f1, f2 *os.File) {
-  aStat, _ := f1.Stat()
-  bStat, _ := f2.Stat()
-  A.Size = uint64(aStat.Size())
-  B.Size = uint64(bStat.Size())
-}
+  return
 
-func compareHeaders(f1, f2 *elf.File) {
-
-  A.Type = f1.Type
-  B.Type = f2.Type
-}
-
-func compareSections(f1, f2 *elf.File) {
-  A.SectionNum = len(f1.Sections)
-  B.SectionNum = len(f2.Sections)
-
-  type SectionPair struct {
-    s1 *elf.Section
-    s2 *elf.Section
-  }
-
-  commonSections := make(map[string]SectionPair)
-  f1OnlySections := make(map[string]*elf.Section)
-  f2OnlySections := make(map[string]*elf.Section)
-
-  isDebug := func(name string) bool {
-    return strings.Contains(name, ".debug")
-  }
-
-  isUserData := func(name string) bool {
-    return name == ".data" || name == ".bss" || name == ".rodata"
-  }
-
-  isGoSpecific := func(name string) bool {
-    return name == ".typelink" || name == ".gosymtab" || name == ".noptrdata" ||
-      name == ".gopclntab" || name == ".noptrbss" || name == ".itablink"
-  }
-
-  isCompilerSpecific := func(name string) bool {
-    return name == ".note.go.buildid" || name == ".go.buildinfo" ||
-      name == ".note.gnu.property" || name == ".note.ABI-tag" ||
-      name == ".gnu.version" || name == ".gnu.version_r" ||
-      name == ".gnu.hash" || name == ".gcc_except_table"
-  }
-
-  for _, s1 := range f1.Sections {
-    n1 := s1.SectionHeader.Name
-    both := false
-
-    if n1 == "" {
-      continue
-    }
-
-    if isDebug(n1) {
-      A.DebugSec[n1] = s1
-      A.Dbg = "yes"
-    } else if isUserData(n1) {
-      A.UDataSec[n1] = s1
-    } else if isGoSpecific(n1) {
-      A.GoSec[n1] = s1
-    } else if isCompilerSpecific(n1) {
-      A.CompilerSec[n1] = s1
-    } else if s1.SectionHeader.Flags & elf.SHF_EXECINSTR != 0 {
-      A.InstrSec[n1] = s1
-    } else {
-      A.OtherSec[n1] = s1
-    }
-
-    for _, s2 := range f2.Sections {
-      n2 := s2.SectionHeader.Name
-      if n1 == n2 {
-        commonSections[n1] = SectionPair{s1, s2}
-        both = true
-      }
-    }
-
-    if !both {
-      f1OnlySections[n1] = s1
-    }
-  }
-
-  for _, s2 := range f2.Sections {
-    _, ok := commonSections[s2.SectionHeader.Name]
-    n2 := s2.SectionHeader.Name
-
-    if n2 == "" {
-      continue
-    }
-
-    if isDebug(n2) {
-      B.Dbg = "yes"
-      B.DebugSec[n2] = s2
-    } else if isUserData(n2) {
-      B.UDataSec[n2] = s2
-    } else if isGoSpecific(n2) {
-      B.GoSec[n2] = s2
-    } else if isCompilerSpecific(n2) {
-      B.CompilerSec[n2] = s2
-    } else if s2.SectionHeader.Flags & elf.SHF_EXECINSTR != 0 {
-      B.InstrSec[n2] = s2
-    } else {
-      B.OtherSec[n2] = s2
-    }
-
-    if !ok {
-      f2OnlySections[s2.SectionHeader.Name] = s2
-    }
-  }
-}
-
-func compareSymbols(f1, f2 *elf.File) {
-  s1, err := f1.Symbols()
+/*  s1, err := f1.Symbols()
   if err != nil {
     panic("Err")
   }
   A.SymbolNum = len(s1)
+  A.AllSymbols = make([]*elf.Symbol, A.SymbolNum)
+  for i, s := range s1 {
+    A.AllSymbols[i] = &s
+  }
   s2, err := f2.Symbols()
   if err != nil {
     panic("Err")
   }
   B.SymbolNum = len(s2)
+  B.AllSymbols = make([]*elf.Symbol, B.SymbolNum)
+  for i, s := range s2 {
+    B.AllSymbols[i] = &s
+  }
 
-  for _, s := range s1 {
-    fmt.Printf("%x %d %s\n", s.Value, s.Info, s.Name)
+  sort.Slice(A.AllSections, func(i, j int) bool {
+    return A.AllSections[i].Info.Offset < A.AllSections[j].Info.Offset
+  })
+
+  sort.Slice(B.AllSections, func(i, j int) bool {
+    return B.AllSections[i].Info.Offset < B.AllSections[j].Info.Offset
+  })
+
+  sort.Slice(A.AllSymbols, func(i, j int) bool {
+    return A.AllSymbols[i].Value < A.AllSymbols[j].Value
+  })
+
+  sort.Slice(B.AllSymbols, func(i, j int) bool {
+    return B.AllSymbols[i].Value < B.AllSymbols[j].Value
+  })
+
+  fillSectonSymbols(A)
+  fillSectonSymbols(B)*/
+}
+
+func fillSectonSymbols(fi *file.FileInfo) {
+
+/*  curSym := 0
+  symNum := len(fi.AllSymbols)
+  for curSec, sec := range fi.AllSections {
+    nextSec := sec.Info.Offset + sec.Info.Size
+    for ; curSym < symNum ; curSym++ {
+      sym := fi.AllSymbols[curSym]
+      if sym.Value > nextSec {
+        fi.AllSections[curSec+1].Symbols[sym.Name] = sym
+        break
+      }
+      fi.AllSections[curSec].Symbols[sym.Name] = sym
+    }
+  }*/
+/*  for _, sym := range fi.AllSymbols {
+    prevSecInd := 0
+    for j, sec := range fi.AllSections {
+      if sym.Value > sec.Info.Offset {
+        fi.AllSections.Symbols[prevSecInd] = sym
+        break
+      }
+      prevSecInd = j
+    }*/
+//    fmt.Printf("%d %s %x %x %x\n", i, s.Name, s.Offset, s.Addr, s.Size)
+//  }
+
+}
+
+func compareSymbols(f1, f2 *file.FileInfo) {
+
+  for _, s := range A.AllSections {
+    fmt.Printf("Section: %s\n", s.Info.Name)
+    for _, sym := range s.Symbols {
+      fmt.Printf("%s %x\n", sym.Name, sym.Value)
+    }
   }
 }
 
 // analyzeSectionGroup takes a particular group of sections, counts their total
 // size and adds the rows with sections size and total size into table
-func analyzeSectionGroup(aS, bS map[string]*elf.Section, gName string) {
+func analyzeSectionGroup(aS, bS map[string]*file.Section, gName string) {
   secSize1 := uint64(0)
   secSize2 := uint64(0)
   for _, s1 := range aS {
-    sName := s1.SectionHeader.Name
-    size1 := s1.SectionHeader.Size
+    sName := s1.Info.SectionHeader.Name
+    size1 := s1.Info.SectionHeader.Size
     secSize1 += size1
     s2, ok := bS[sName]
     if ok {
-      size2 := s2.SectionHeader.Size
+      size2 := s2.Info.SectionHeader.Size
       Report.AddIntRowGroup(gName, sName, size1, size2)
       secSize2 += size2
     } else {
@@ -210,12 +125,12 @@ func analyzeSectionGroup(aS, bS map[string]*elf.Section, gName string) {
     }
   }
   for _, s2 := range bS {
-    sName := s2.SectionHeader.Name
+    sName := s2.Info.SectionHeader.Name
     _, ok := aS[sName]
     if ok {
       continue
     }
-    size2 := s2.SectionHeader.Size
+    size2 := s2.Info.SectionHeader.Size
     secSize2 += size2
     Report.AddIntRow2Group(gName, sName, size2)
   }
@@ -247,22 +162,11 @@ func fillTable() {
 
 func Compare(fname1, fname2 string) error {
   Report = report.New(fname1, fname2)
-  A = newFileInfo()
-  B = newFileInfo()
+  A, _ = file.CreateFileInfo(fname1)
+  B, _ = file.CreateFileInfo(fname2)
 
-  f1, elf1, err := readElf(fname1)
-  if err != nil {
-    return fmt.Errorf("Failed to open elf: %w", err)
-  }
-  f2, elf2, err := readElf(fname2)
-  if err != nil {
-    return fmt.Errorf("Failed to open elf: %w", err)
-  }
-
-  compareHeaders(elf1, elf2)
-  compareSections(elf1, elf2)
-  compareSymbols(elf1, elf2)
-  compareStat(f1, f2)
+  compareSections(A, B)
+  compareSymbols(A, B)
   fillTable()
   Report.Print()
   return nil
