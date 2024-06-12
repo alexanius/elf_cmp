@@ -3,14 +3,19 @@ package file
 import (
   "fmt"
   "os"
+  "sort"
   "strings"
 
   "debug/elf"
 )
 
+type Symbol struct {
+  S   elf.Symbol
+}
+
 type Section struct {
   Info    *elf.Section
-  Symbols map[string]*elf.Symbol
+  Symbols map[string]*Symbol
 }
 
 type FileInfo struct {
@@ -18,8 +23,6 @@ type FileInfo struct {
   Type        elf.Type  // Elf type
   Dbg         string    // Has debug info
   Size        uint64    // Total size of file
-  SectionNum  int       // Number of all sections
-  SymbolNum   int       // Number of all symbols
 
   DebugSec    map[string]*Section   // Sections with debug information
   InstrSec    map[string]*Section   // Sections with executable instructions
@@ -28,8 +31,8 @@ type FileInfo struct {
   CompilerSec map[string]*Section   // Sections with compiler data
   OtherSec    map[string]*Section   // All other sections
 
-  AllSections []*Section            // All the sections sorted by offset
-  AllSymbols  []*elf.Symbol         // All other symbols sorted by value
+  AllSections []*Section            // All the sections sorted by addr
+  AllSymbols  []*Symbol             // All other symbols sorted by value
 }
 
 func newFileInfo() *FileInfo {
@@ -44,7 +47,16 @@ func newFileInfo() *FileInfo {
   return &res
 }
 
-func (fi *FileInfo) readSection() {
+func (fi *FileInfo) SectionNum() int {
+  return len(fi.AllSections)
+}
+
+func (fi *FileInfo) SymbolNum() int {
+  s, _ := fi.File.Symbols()
+  return len(s)
+}
+
+func (fi *FileInfo) readSections() {
   isDebug := func(name string) bool {
     return strings.Contains(name, ".debug")
   }
@@ -67,13 +79,30 @@ func (fi *FileInfo) readSection() {
 
   fi.AllSections = make([]*Section, len(fi.File.Sections))
 
+  curSym  := 0
+  syms, _ := fi.File.Symbols()
+  sort.Slice(syms, func(i, j int) bool {
+    return syms[i].Value < syms[j].Value
+    })
+
   for i, s := range fi.File.Sections {
     n := s.SectionHeader.Name
     s1 := &Section{Info : s}
+    s1.Symbols = make(map[string]*Symbol)
     fi.AllSections[i] = s1
 
     if n == "" {
       continue
+    }
+
+    // Adding all symbols to this section
+    nextSec := s.Addr + s.Size
+    for ; curSym < len(syms) ; curSym++ {
+      sym := &Symbol{syms[curSym]}
+      if sym.S.Value > nextSec {
+        break
+      }
+      s1.Symbols[sym.S.Name] = sym
     }
 
     if isDebug(n) {
@@ -93,22 +122,6 @@ func (fi *FileInfo) readSection() {
   }
 }
 
-func (fi *FileInfo) readSymbols() {
-/*  curSym := 0
-  symNum := len(fi.AllSymbols)
-  for curSec, sec := range fi.AllSections {
-    nextSec := sec.Info.Offset + sec.Info.Size
-    for ; curSym < symNum ; curSym++ {
-      sym := fi.AllSymbols[curSym]
-      if sym.Value > nextSec {
-        fi.AllSections[curSec+1].Symbols[sym.Name] = sym
-        break
-      }
-      fi.AllSections[curSec].Symbols[sym.Name] = sym
-    }
-  }*/
-}
-
 func CreateFileInfo(name string) (*FileInfo, error) {
   f, err := os.Open(name)
   if err != nil {
@@ -125,7 +138,7 @@ func CreateFileInfo(name string) (*FileInfo, error) {
   info.Type = resElf.Type
   stat, _ := f.Stat()
   info.Size = uint64(stat.Size())
-  info.readSection()
+  info.readSections()
 
   return info, nil
 }
