@@ -4,7 +4,7 @@ import (
   "fmt"
 )
 
-func index(aName, bName, generalTable, secTable, symTable string) string {
+func index(aName, bName, generalTable, secTable string) string {
   return fmt.Sprintf(`
  <!DOCTYPE html>
 <html>
@@ -28,11 +28,7 @@ func index(aName, bName, generalTable, secTable, symTable string) string {
 
  %s
 
-  <h1>Symbols</h1>
-
- %s
-
 </body>
 </html> 
-`,aName, bName, generalTable, secTable, symTable)
+`,aName, bName, generalTable, secTable)
 }
