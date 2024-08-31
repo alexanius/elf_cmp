@@ -21,6 +21,7 @@ type Section struct {
 type FileInfo struct {
   File        *elf.File // ELF file
   Type        elf.Type  // Elf type
+  Name        string    // File name
   Dbg         string    // Has debug info
   Size        uint64    // Total size of file
 
@@ -54,6 +55,21 @@ func (fi *FileInfo) SectionNum() int {
 func (fi *FileInfo) SymbolNum() int {
   s, _ := fi.File.Symbols()
   return len(s)
+}
+
+func (fi *FileInfo) ElfType() string {
+  switch fi.Type {
+  case elf.ET_NONE:   return "No file type"
+  case elf.ET_REL:    return "Relocatable file"
+  case elf.ET_EXEC:   return "Executable file"
+  case elf.ET_DYN:    return "Shared object file"
+  case elf.ET_CORE:   return "Core file"
+  case elf.ET_LOOS:   return "First operating system specific"
+  case elf.ET_HIOS:   return "Last operating system-specific"
+  case elf.ET_LOPROC: return "Processor-specific"
+  case elf.ET_HIPROC: return "Processor-specific"
+  default: return "Error in elf type"
+  }
 }
 
 func (fi *FileInfo) readSections() {
@@ -134,6 +150,7 @@ func CreateFileInfo(name string) (*FileInfo, error) {
   }
 
   info := newFileInfo()
+  info.Name = name
   info.File = resElf
   info.Type = resElf.Type
   stat, _ := f.Stat()

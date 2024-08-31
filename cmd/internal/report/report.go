@@ -6,7 +6,27 @@ import (
 
   "github.com/jedib0t/go-pretty/v6/table"
   "github.com/jedib0t/go-pretty/v6/text"
+
+  "elf_cmp/cmd/internal/file"
 )
+
+type SectionPair struct {
+  A *file.Section
+  B *file.Section
+}
+
+type SecCompare struct {
+  Asections []*file.Section // Sections only in A
+  Bsections []*file.Section // Sections only in B
+
+  // Sections, that are present in both files
+  ComonSections []*SectionPair
+}
+
+// Results of compared binaries
+type Compare struct {
+  Secs map[string]*SecCompare // Key - group name
+}
 
 func CountPercent(a, b uint64) float64 {
   if a > b {
@@ -17,10 +37,14 @@ func CountPercent(a, b uint64) float64 {
 
 type Report struct {
   Stat      table.Writer
+
+  F1, F2    *file.FileInfo
 }
 
-func New(A, B string) *Report{
+func New(A, B *file.FileInfo) *Report{
   r := Report{}
+  r.F1 = A
+  r.F2 = B
 
   r.Stat     = table.NewWriter()
   r.Stat.SetColumnConfigs([]table.ColumnConfig{
@@ -32,8 +56,8 @@ func New(A, B string) *Report{
   rowConfigAutoMerge := table.RowConfig{
     AutoMerge:      true,
     AutoMergeAlign: text.AlignLeft}
-  r.Stat.AppendRow(table.Row{"A", "A", A, A, A}, rowConfigAutoMerge)
-  r.Stat.AppendRow(table.Row{"B", "B", B, B, B}, rowConfigAutoMerge)
+  r.Stat.AppendRow(table.Row{"A", "A", A.Name, A.Name, A.Name}, rowConfigAutoMerge)
+  r.Stat.AppendRow(table.Row{"B", "B", B.Name, B.Name, B.Name}, rowConfigAutoMerge)
   r.Stat.AppendSeparator()
   r.Stat.AppendRow(table.Row{"", "", "A", "B", "Diff"}, rowConfigAutoMerge)
   r.Stat.AppendSeparator()
@@ -134,3 +158,135 @@ func (r *Report) AddStatRow(name, A, B, d string) {
 func (r *Report) Print() {
   r.Stat.Render()
 }
+
+func generateGeneralInfoHtml(A, B *file.FileInfo) string {
+  return fmt.Sprintf(`
+  <table>
+    <tr>
+      <th>Type</th>
+      <td>%s</td>
+      <td>%s</td>
+    </tr>
+    <tr>
+      <th>Debug info</th>
+      <td>%s</td>
+      <td>%s</td>
+    </tr>
+    <tr>
+      <th>Sections</th>
+      <td>%d</td>
+      <td>%d</td>
+    </tr>
+    <tr>
+      <th>Symbols</th>
+      <td>%d</td>
+      <td>%d</td>
+    </tr>
+    <tr>
+    <th>Size</th>
+      <td>%d</td>
+      <td>%d</td>
+    </tr>
+  </table>
+`, A.ElfType(),    B.ElfType(),
+   A.Dbg,          B.Dbg,
+   A.SectionNum(), B.SectionNum(),
+   A.SymbolNum(),  B.SymbolNum(),
+   A.Size,         B.Size)
+}
+
+func generateSectionsTableHtml(cmp *Compare, A, B *file.FileInfo) string {
+  tbl := ""
+  for gName, secs := range cmp.Secs {
+    row := ""
+    aSize := uint64(0)
+    bSize := uint64(0)
+    for _, aSec := range secs.Asections {
+      row += fmt.Sprintf("    <tr><td>%s</td><td>%d</td><td></td><td></td></tr>\n", aSec.Info.Name, aSec.Info.Size)
+      aSize += aSec.Info.Size
+    }
+    for _, sec := range secs.ComonSections {
+      row += fmt.Sprintf("    <tr><td>%s</td><td>%d</td><td>%d</td><td>%+.4f</td></tr>\n", sec.A.Info.Name, sec.A.Info.Size, sec.B.Info.Size, CountPercent(sec.A.Info.Size, sec.B.Info.Size))
+      aSize += sec.A.Info.Size
+      bSize += sec.B.Info.Size
+    }
+    for _, bSec := range secs.Bsections {
+      row += fmt.Sprintf("    <tr><td>%s</td><td></td><td>%d</td><td></td></tr>\n", bSec.Info.Name, bSec.Info.Size)
+      bSize += bSec.Info.Size
+    }
+    rows := len(secs.Asections) + len(secs.ComonSections) + len(secs.Bsections) + 2
+    row = fmt.Sprintf(`%s
+`, row)
+    tbl += fmt.Sprintf(`    <tr><th rowspan=%d>%s</th></tr>
+%s`, rows, gName, row)
+    tbl += fmt.Sprintf("    <tr><td>Total</td><td>%d</td><td>%d</td><td>%+.4f</td></tr>\n", aSize, bSize, CountPercent(aSize, bSize))
+  }
+
+  tbl = fmt.Sprintf(
+`
+  <table>
+    <tr><th></th><th>Section name</th><th>Size A</th><th>Size B</th><th>Diff</th></tr>
+%s  </table>
+`, tbl)
+  return tbl
+}
+
+func generateSymbolsTableHtml(cmp *Compare, A, B *file.FileInfo) string {
+  tbl := ""
+  for gName, secs := range cmp.Secs {
+    row := ""
+    aSize := 0
+    bSize := 0
+    for _, aSec := range secs.Asections {
+      row += fmt.Sprintf("    <tr><td>%s</td><td>%d</td><td></td><td></td></tr>\n", aSec.Info.Name, len(aSec.Symbols))
+      aSize += len(aSec.Symbols)
+    }
+    for _, sec := range secs.ComonSections {
+      aSymNum := len(sec.A.Symbols)
+      bSymNum := len(sec.B.Symbols)
+      row += fmt.Sprintf("    <tr><td>%s</td><td>%d</td><td>%d</td><td>%+.4f</td></tr>\n", sec.A.Info.Name, aSymNum, bSymNum, CountPercent(uint64(aSymNum), uint64(bSymNum)))
+      aSize += aSymNum
+      bSize += bSymNum
+    }
+    for _, bSec := range secs.Bsections {
+      row += fmt.Sprintf("    <tr><td>%s</td><td></td><td>%d</td><td></td></tr>\n", bSec.Info.Name, len(bSec.Symbols))
+      bSize += len(bSec.Symbols)
+    }
+    rows := len(secs.Asections) + len(secs.ComonSections) + len(secs.Bsections) + 2
+    row = fmt.Sprintf(`%s
+`, row)
+    tbl += fmt.Sprintf(`    <tr><th rowspan=%d>%s</th></tr>
+%s`, rows, gName, row)
+    tbl += fmt.Sprintf("    <tr><td>Total</td><td>%d</td><td>%d</td><td>%+.4f</td></tr>\n", aSize, bSize, CountPercent(uint64(aSize), uint64(bSize)))
+  }
+
+  tbl = fmt.Sprintf(
+`
+  <table>
+    <tr><th></th><th>Section name</th><th>Size A</th><th>Size B</th><th>Diff</th></tr>
+%s  </table>
+`, tbl)
+  return tbl
+}
+
+func (r *Report) PrintHtml(cmp *Compare) {
+  genTbl := generateGeneralInfoHtml(r.F1, r.F2)
+  secTbl := generateSectionsTableHtml(cmp, r.F1, r.F2)
+  symTbl := generateSymbolsTableHtml(cmp, r.F1, r.F2)
+  str := index(
+    r.F1.Name,
+    r.F2.Name,
+    genTbl,
+    secTbl,
+    symTbl)
+
+  os.Mkdir("report", 0750)
+  ind, err := os.Create("report/index.html")
+  if err != nil {
+    panic(err)
+  }
+  defer ind.Close()
+
+  ind.Write([]byte(str))
+}
+

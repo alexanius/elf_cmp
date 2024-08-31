@@ -9,13 +9,16 @@ import (
 )
 
 type Config struct {
-  Fname1 string
-  Fname2 string
+  Fname1    string
+  Fname2    string
+  Html      bool
 }
 
 var config Config
 
 func parseArgs() {
+  flag.BoolVar(&config.Html, "html", false, "generate html report")
+
   flag.Parse()
   args := flag.Args()
 
@@ -41,7 +44,7 @@ func checkConfig() {
 func main() {
   parseArgs()
   checkConfig()
-  err := compare.Compare(config.Fname1, config.Fname2)
+  err := compare.Compare(config.Fname1, config.Fname2, config.Html)
   if err != nil {
     println("Error")
   }
