@@ -3,6 +3,16 @@
 This is a tool for comparing two elf files. It can show you the similar and
 different symbols and make a diff of functions.
 
+## HTML report
+
+The recomended report type is html. It can be simply generated with:
+
+```
+$ elf_cmp -html file1 file2
+
+$ firefox report/index.html
+```
+
 ## Default launch
 
 The default working mode is launching util with two binaries:
@@ -96,4 +106,11 @@ $ elf_cmp compare elf_cmp_old elf_cmp
 |                         | Total                   | 0                       | 0                       |        ~                |
 +-------------------------+-------------------------+-------------------------+-------------------------+-------------------------+
 ```
+
+## TODO
+
+ * Add styles for tables
+ * Add table text alignments
+ * Add coloring of the table cells
+ * Add table sorting
 
