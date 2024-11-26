@@ -214,21 +214,21 @@ func generateSectionsTableHtml(cmp *Compare, A, B *file.FileInfo) string {
     aSyms := 0
     bSyms := 0
     for _, aSec := range secs.Asections {
-      secRow += fmt.Sprintf("    <tr><td>%s</td><td>%d</td><td></td><td></td>  <td>%d</td><td></td><td></td> </tr>\n", aSec.Info.Name, aSec.Info.Size, len(aSec.Symbols))
+      secRow += fmt.Sprintf("    <tr><td><a href=\"sections/%s.html\">%s</a></td><td>%d</td><td></td><td></td>  <td>%d</td><td></td><td></td> </tr>\n", aSec.Info.Name, aSec.Info.Name, aSec.Info.Size, len(aSec.Symbols))
       aSize += aSec.Info.Size
       aSyms += len(aSec.Symbols)
     }
     for _, sec := range secs.ComonSections {
       aSymNum := len(sec.A.Symbols)
       bSymNum := len(sec.B.Symbols)
-      secRow += fmt.Sprintf("    <tr><td>%s</td><td>%d</td><td>%d</td><td>%+.4f</td>  <td>%d</td><td>%d</td><td>%+.4f</td> </tr>\n", sec.A.Info.Name, sec.A.Info.Size, sec.B.Info.Size, CountPercent(sec.A.Info.Size, sec.B.Info.Size), aSymNum, bSymNum, CountPercent(uint64(aSymNum), uint64(bSymNum)))
+      secRow += fmt.Sprintf("    <tr><td><a href=\"sections/%s.html\">%s</a></td><td>%d</td><td>%d</td><td>%+.4f</td>  <td>%d</td><td>%d</td><td>%+.4f</td> </tr>\n", sec.A.Info.Name, sec.A.Info.Name, sec.A.Info.Size, sec.B.Info.Size, CountPercent(sec.A.Info.Size, sec.B.Info.Size), aSymNum, bSymNum, CountPercent(uint64(aSymNum), uint64(bSymNum)))
       aSize += sec.A.Info.Size
       bSize += sec.B.Info.Size
       aSyms += aSymNum
       bSyms += bSymNum
     }
     for _, bSec := range secs.Bsections {
-      secRow += fmt.Sprintf("    <tr><td>%s</td><td></td><td>%d</td><td></td>  <td></td><td>%d</td><td></td> </tr>\n", bSec.Info.Name, bSec.Info.Size, len(bSec.Symbols))
+      secRow += fmt.Sprintf("    <tr><td><a href=\"sections/%s.html\">%s</a></td><td></td><td>%d</td><td></td>  <td></td><td>%d</td><td></td> </tr>\n", bSec.Info.Name, bSec.Info.Name, bSec.Info.Size, len(bSec.Symbols))
       bSize += bSec.Info.Size
       bSyms += len(bSec.Symbols)
     }
@@ -249,15 +249,35 @@ func generateSectionsTableHtml(cmp *Compare, A, B *file.FileInfo) string {
   return secTbl
 }
 
-func (r *Report) PrintHtml(cmp *Compare) {
-  genTbl := generateGeneralInfoHtml(r.F1, r.F2)
-  secTbl := generateSectionsTableHtml(cmp, r.F1, r.F2)
-  str := index(
-    r.F1.Name,
-    r.F2.Name,
-    genTbl,
-    secTbl)
+/*func generateCompareSectionsTableHtml(cmp *Compare, A, B *file.FileInfo) string {
+  tbl := fmt.Sprintf("    <tr><th>Address A</th><th>Address B</th><th>Name</th><th>Size</th></tr>\n")
+  for symName, sym := range s.Symbols {
+    tbl += fmt.Sprintf("    <tr><td>%x</td><td>%s</td><td>%x</td></tr>", sym.S.Value, symName, sym.S.Size)
+  }
+  tbl = fmt.Sprintf(
+`
+  <table>
+%s
+  </table>
+`, tbl)
+  return tbl
+}*/
 
+func generateSingleSectionsTableHtml(s *file.Section) string {
+  tbl := fmt.Sprintf("    <tr><th>Address</th><th>Name</th><th>Size</th></tr>\n")
+  for symName, sym := range s.Symbols {
+    tbl += fmt.Sprintf("    <tr><td>%x</td><td>%s</td><td>%x</td></tr>", sym.S.Value, symName, sym.S.Size)
+  }
+  tbl = fmt.Sprintf(
+`
+  <table>
+%s
+  </table>
+`, tbl)
+  return tbl
+}
+
+func (r *Report) PrintHtml(cmp *Compare) {
   os.Mkdir("report", 0750)
   ind, err := os.Create("report/index.html")
   if err != nil {
@@ -265,6 +285,53 @@ func (r *Report) PrintHtml(cmp *Compare) {
   }
   defer ind.Close()
 
+  genTbl := generateGeneralInfoHtml(r.F1, r.F2)
+  secTbl := generateSectionsTableHtml(cmp, r.F1, r.F2)
+  str := index(
+    r.F1.Name,
+    r.F2.Name,
+    genTbl,
+    secTbl)
   ind.Write([]byte(str))
+
+  os.Mkdir("report/sections", 0750)
+  for _, secs := range cmp.Secs {
+    for _, aSec := range secs.Asections {
+      secName := aSec.Info.Name
+      filePath := fmt.Sprintf("report/sections/%s.html", secName)
+      ind, err := os.Create(filePath)
+      if err != nil {
+        panic(err)
+      }
+      defer ind.Close()
+
+      str := singleSection(secName, r.F1.Name, generateSingleSectionsTableHtml(aSec))
+      ind.Write([]byte(str))
+    }
+    for _, sec := range secs.ComonSections {
+      secName := sec.A.Info.Name
+      filePath := fmt.Sprintf("report/sections/%s.html", secName)
+      ind, err := os.Create(filePath)
+      if err != nil {
+        panic(err)
+      }
+      defer ind.Close()
+
+      str := compareSections(secName, r.F1.Name, r.F2.Name)
+      ind.Write([]byte(str))
+    }
+    for _, bSec := range secs.Bsections {
+      secName := bSec.Info.Name
+      filePath := fmt.Sprintf("report/sections/%s.html", secName)
+      ind, err := os.Create(filePath)
+      if err != nil {
+        panic(err)
+      }
+      defer ind.Close()
+
+      str := singleSection(secName, r.F2.Name, generateSingleSectionsTableHtml(bSec))
+      ind.Write([]byte(str))
+    }
+  }
 }
 
