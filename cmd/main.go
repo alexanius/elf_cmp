@@ -3,6 +3,7 @@ package main
 import (
   "errors"
   "flag"
+  "fmt"
   "os"
 
   "elf_cmp/cmd/internal/compare"
@@ -16,19 +17,19 @@ type Config struct {
 
 var config Config
 
-func parseArgs() {
+func parseArgs() error {
   flag.BoolVar(&config.Html, "html", false, "generate html report")
 
   flag.Parse()
   args := flag.Args()
 
   if len(args) != 2 {
-    println("Need two arguments")
-    return
+    return errors.New("Need two arguments")
   }
 
   config.Fname1 = flag.Arg(0)
   config.Fname2 = flag.Arg(1)
+  return nil
 }
 
 func checkConfig() {
@@ -42,10 +43,14 @@ func checkConfig() {
 }
 
 func main() {
-  parseArgs()
-  checkConfig()
-  err := compare.Compare(config.Fname1, config.Fname2, config.Html)
+  err := parseArgs()
   if err != nil {
-    println("Error")
+    fmt.Println(err)
+    return
+  }
+  checkConfig()
+  err = compare.Compare(config.Fname1, config.Fname2, config.Html)
+  if err != nil {
+    fmt.Println(err)
   }
 }
