@@ -2,10 +2,11 @@ package compare
 
 import (
   "bufio"
-  "fmt"
   "os"
   "regexp"
   "strconv"
+
+  "elf_cmp/cmd/internal/report"
 )
 
 /*
@@ -22,7 +23,7 @@ gc #        the GC number, incremented at each GC
 # P         number of processors used
 */
 
-type gc_cycle struct {
+type GcCycle struct {
   Num       int64   // Number of GC cycle
   Time      float64 // Time from program start
   // percentage of time spent in GC since program start
@@ -46,7 +47,7 @@ func AnalyzeLog(filePath string) error {
     lines = append(lines, scanner.Text())
   }
 
-  cycles := make([]gc_cycle, 0)
+  cycles := make([]GcCycle, 0)
   gc_rx := regexp.MustCompile(`.*gc ([0-9]+) @([0-9]+\.[0-9]+)s.*, ([0-9]+)\-\>([0-9]+)\-\>([0-9]+)`)
   for _, l := range lines {
     if m := gc_rx.FindStringSubmatch(l) ; m != nil {
@@ -56,7 +57,7 @@ func AnalyzeLog(filePath string) error {
 	m4, _ := strconv.ParseInt(m[4], 10, 64)
 	m5, _ := strconv.ParseInt(m[5], 10, 64)
 
-      cycle := gc_cycle {
+      cycle := GcCycle {
         Num       : m1,
 	Time      : m2,
 	HeapStart : m3,
@@ -67,9 +68,26 @@ func AnalyzeLog(filePath string) error {
     }
   }
 
+  heapSize := make([]int64, 0)
+  heapLive := make([]int64, 0)
+  gcTimes  := make([]float64, 0)
   for _, c := range cycles {
-    fmt.Printf("%v\n", c)
+    heapSize = append(heapSize, c.HeapStart)
+    heapSize = append(heapSize, c.HeapEnd)
+    heapLive = append(heapLive, c.HeapLive)
+    gcTimes = append(gcTimes, c.Time)
   }
+
+  page := report.GcTraceReport(heapSize, heapLive, gcTimes)
+
+  os.Mkdir("report", 0750)
+  ind, err := os.Create("report/index.html")
+  if err != nil {
+    panic(err)
+  }
+  defer ind.Close()
+
+  ind.Write([]byte(page))
 
   return nil
 }
