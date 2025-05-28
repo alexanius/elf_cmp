@@ -123,3 +123,4 @@ func Compare(fname1, fname2 string, html bool) error {
   }
   return nil
 }
+
