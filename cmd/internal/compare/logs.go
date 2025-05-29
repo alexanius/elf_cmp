@@ -48,7 +48,7 @@ func AnalyzeLog(filePath string) error {
   }
 
   cycles := make([]GcCycle, 0)
-  gc_rx := regexp.MustCompile(`.*gc ([0-9]+) @([0-9]+\.[0-9]+)s.*, ([0-9]+)\-\>([0-9]+)\-\>([0-9]+)`)
+  gc_rx := regexp.MustCompile(`.*gc ([0-9]+) @([0-9]+\.[0-9]+)s.*, ([0-9]+)\-\>([0-9]+)\-\>([0-9]+).*goal.*stacks.*globals`)
   for _, l := range lines {
     if m := gc_rx.FindStringSubmatch(l) ; m != nil {
         m1, _ := strconv.ParseInt(m[1], 10, 64)
