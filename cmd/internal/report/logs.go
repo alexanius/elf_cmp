@@ -7,10 +7,12 @@ import (
 func GcTraceReport(l1, l2 []int64, l3 []float64) string {
 
   line1 := ""
+  line2 := ""
   maxMemory := int64(0)
   for i := 0; i < len(l1) ; i+=2 {
     line1 += fmt.Sprintf("{val:%d,cycle:%d},\n", l1[i], i/2)
     line1 += fmt.Sprintf("{val:%d,cycle:%d},\n", l1[i+1], i/2)
+    line2 += fmt.Sprintf("{val:%d,cycle:%d},\n", l2[i/2], i/2)
     if l1[i] > maxMemory {
       maxMemory = l1[i]
     }
@@ -26,6 +28,7 @@ func GcTraceReport(l1, l2 []int64, l3 []float64) string {
 <script src="d3.js"></script>
 <script type="module">
 const data1 = Object.values([
+    [%s],
     [%s]
 ]);
 
@@ -61,7 +64,6 @@ svg.append("g")
   .call(d3.axisBottom(x).ticks(5));
 
 // Add Y axis
-// I need help in this area, how can I get the min and max values set in the domain?
 var y = d3.scaleLinear()
   .domain([0, d3.max(data1, (d) => %d)])
   .range([height, 0]);
@@ -70,7 +72,6 @@ svg.append("g")
   .call(d3.axisLeft(y));
 
 // Draw the line
-// I need help in this area, how can I get the lines plotted, js gives error in this!
 svg.selectAll(".line")
   .data(data1)
   .enter()
@@ -81,5 +82,5 @@ svg.selectAll(".line")
   .attr("d", (d) => line(d));
 
 </script>
-`, line1, len(l2) + 10, maxMemory)
+`, line1, line2, len(l2) + 10, maxMemory)
 }

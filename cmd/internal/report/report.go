@@ -29,10 +29,29 @@ type Compare struct {
 }
 
 func CountPercent(a, b uint64) float64 {
-  if a > b {
-    return -(1 - float64(b) / float64(a)) * 100
+  if a == 0 || b == 0 {
+    return 0
   }
-  return (float64(b) / float64(a)) * 100
+  return float64(b) / float64(a)
+}
+
+func CountRatio(a, b uint64) string {
+  if a == b {
+    return "       ~"
+  }
+
+  if a == 0 || b == 0 {
+    return "0"
+  }
+
+  r := float64(b) / float64(a)
+
+  if r > 1 {
+    return fmt.Sprintf("%.4f ^", r)
+  } else if r < 1 {
+    return fmt.Sprintf("%.4f V", r)
+  }
+  return "???"
 }
 
 type Report struct {
@@ -59,7 +78,7 @@ func New(A, B *file.FileInfo) *Report{
   r.Stat.AppendRow(table.Row{"A", "A", A.Name, A.Name, A.Name}, rowConfigAutoMerge)
   r.Stat.AppendRow(table.Row{"B", "B", B.Name, B.Name, B.Name}, rowConfigAutoMerge)
   r.Stat.AppendSeparator()
-  r.Stat.AppendRow(table.Row{"", "", "A", "B", "Diff"}, rowConfigAutoMerge)
+  r.Stat.AppendRow(table.Row{"", "", "A", "B", "Diff (B/A)"}, rowConfigAutoMerge)
   r.Stat.AppendSeparator()
   r.Stat.AppendRow(table.Row{"General info", "General info",
     "General info", "General info", "General info"}, rowConfigAutoMerge)
@@ -88,7 +107,7 @@ func (r *Report) AddIntRow(name string, A, B uint64) {
     name,
     fmt.Sprintf("%d", A),
     fmt.Sprintf("%d", B),
-    fmt.Sprintf("%+.2f%%", CountPercent(A, B))},
+    fmt.Sprintf("%s", CountRatio(A, B))},
     rowConfigAutoMerge)
 }
 
@@ -98,7 +117,7 @@ func (r *Report) AddIntRowGroup(group, name string, A, B uint64) {
     name,
     fmt.Sprintf("%d", A),
     fmt.Sprintf("%d", B),
-    fmt.Sprintf("%+.2f%%", CountPercent(A, B))})
+    fmt.Sprintf("%s", CountRatio(A, B))})
 }
 
 func (r *Report) AddIntRow1(name string, A uint64) {
@@ -221,7 +240,7 @@ func generateSectionsTableHtml(cmp *Compare, A, B *file.FileInfo) string {
     for _, sec := range secs.ComonSections {
       aSymNum := len(sec.A.Symbols)
       bSymNum := len(sec.B.Symbols)
-      secRow += fmt.Sprintf("    <tr><td>%s</td><td>%d</td><td>%d</td><td>%+.4f</td>  <td>%d</td><td>%d</td><td>%+.4f</td> </tr>\n", sec.A.Info.Name, sec.A.Info.Size, sec.B.Info.Size, CountPercent(sec.A.Info.Size, sec.B.Info.Size), aSymNum, bSymNum, CountPercent(uint64(aSymNum), uint64(bSymNum)))
+      secRow += fmt.Sprintf("    <tr><td>%s</td><td>%d</td><td>%d</td><td>%.4f</td>  <td>%d</td><td>%d</td><td>%.4f</td> </tr>\n", sec.A.Info.Name, sec.A.Info.Size, sec.B.Info.Size, CountPercent(sec.A.Info.Size, sec.B.Info.Size), aSymNum, bSymNum, CountPercent(uint64(aSymNum), uint64(bSymNum)))
       aSize += sec.A.Info.Size
       bSize += sec.B.Info.Size
       aSyms += aSymNum
@@ -237,7 +256,7 @@ func generateSectionsTableHtml(cmp *Compare, A, B *file.FileInfo) string {
 `, secRow)
     secTbl += fmt.Sprintf(`    <tr><th rowspan=%d>%s</th></tr>
 %s`, secRows, gName, secRow)
-    secTbl += fmt.Sprintf("    <tr><td>Total</td><td>%d</td><td>%d</td><td>%+.4f</td>  <td>%d</td><td>%d</td><td>%+.4f</td> </tr>\n", aSize, bSize, CountPercent(aSize, bSize), aSyms, bSyms, CountPercent(uint64(aSyms), uint64(bSyms)))
+    secTbl += fmt.Sprintf("    <tr><td>Total</td><td>%d</td><td>%d</td><td>%.4f</td>  <td>%d</td><td>%d</td><td>%.4f</td> </tr>\n", aSize, bSize, CountPercent(aSize, bSize), aSyms, bSyms, CountPercent(uint64(aSyms), uint64(bSyms)))
   }
 
   secTbl = fmt.Sprintf(
