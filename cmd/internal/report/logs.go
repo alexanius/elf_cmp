@@ -2,25 +2,38 @@ package report
 
 import (
   "fmt"
+  "os"
+
+  "elf_cmp/cmd/internal/compare"
 )
 
-func GcTraceReport(l1, l2 []int64, l3 []float64) string {
+func GcTraceReport(cycles []compare.GcCycle) error {
+
+  heapSize := make([]int64, 0)
+  heapLive := make([]int64, 0)
+  gcTimes  := make([]float64, 0)
+  for _, c := range cycles {
+    heapSize = append(heapSize, c.HeapStart)
+    heapSize = append(heapSize, c.HeapEnd)
+    heapLive = append(heapLive, c.HeapLive)
+    gcTimes = append(gcTimes, c.Time)
+  }
 
   line1 := ""
   line2 := ""
   maxMemory := int64(0)
-  for i := 0; i < len(l1) ; i+=2 {
-    line1 += fmt.Sprintf("{val:%d,cycle:%d},\n", l1[i], i/2)
-    line1 += fmt.Sprintf("{val:%d,cycle:%d},\n", l1[i+1], i/2)
-    line2 += fmt.Sprintf("{val:%d,cycle:%d},\n", l2[i/2], i/2)
-    if l1[i] > maxMemory {
-      maxMemory = l1[i]
+  for i := 0; i < len(heapSize) ; i+=2 {
+    line1 += fmt.Sprintf("{val:%d,cycle:%d},\n", heapSize[i], i/2)
+    line1 += fmt.Sprintf("{val:%d,cycle:%d},\n", heapSize[i+1], i/2)
+    line2 += fmt.Sprintf("{val:%d,cycle:%d},\n", heapLive[i/2], i/2)
+    if heapSize[i] > maxMemory {
+      maxMemory = heapSize[i]
     }
-    if l1[i+1] > maxMemory {
-      maxMemory = l1[i+1]
+    if heapSize[i+1] > maxMemory {
+      maxMemory = heapSize[i+1]
     }
   }
-  return fmt.Sprintf(`
+  page := fmt.Sprintf(`
 <!DOCTYPE html>
 <div id="container"></div>
 <div id="ca"></div>
@@ -82,5 +95,16 @@ svg.selectAll(".line")
   .attr("d", (d) => line(d));
 
 </script>
-`, line1, line2, len(l2) + 10, maxMemory)
+`, line1, line2, len(heapLive) + 10, maxMemory)
+
+  os.Mkdir("report", 0750)
+  ind, err := os.Create("report/index.html")
+  if err != nil {
+    panic(err)
+  }
+  defer ind.Close()
+
+  ind.Write([]byte(page))
+
+  return nil
 }

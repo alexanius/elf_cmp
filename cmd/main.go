@@ -7,6 +7,7 @@ import (
   "os"
 
   "elf_cmp/cmd/internal/compare"
+  "elf_cmp/cmd/internal/report"
 )
 
 type Action int
@@ -86,13 +87,22 @@ func main() {
   switch config.Action {
   case Analyze:
     if config.Log != "" {
-      err = compare.AnalyzeLog(config.Log)
+      gcCycle, err := compare.AnalyzeLog(config.Log)
+      if err != nil {
+        panic(err)
+      }
+      err = report.GcTraceReport(gcCycle)
+      if err != nil {
+        panic(err)
+      }
     }
   case Compare:
-    err = compare.Compare(config.Fname1, config.Fname2, config.Html)
-  }
-  if err != nil {
-    fmt.Println(err)
+    cmp := compare.CompareFiles(config.Fname1, config.Fname2)
+    if config.Html {
+      report.PrintHtml(cmp)
+    } else {
+      report.Print(cmp)
+    }
   }
 }
 

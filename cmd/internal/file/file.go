@@ -160,3 +160,6 @@ func CreateFileInfo(name string) (*FileInfo, error) {
   return info, nil
 }
 
+func (s *Section) Name() string {
+  return s.Info.Name
+}

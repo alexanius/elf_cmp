@@ -3,29 +3,51 @@ package report
 import (
   "fmt"
   "os"
+  "strings"
 
   "github.com/jedib0t/go-pretty/v6/table"
   "github.com/jedib0t/go-pretty/v6/text"
 
+  "elf_cmp/cmd/internal/compare"
   "elf_cmp/cmd/internal/file"
 )
 
-type SectionPair struct {
-  A *file.Section
-  B *file.Section
-}
+type secGroup int
 
-type SecCompare struct {
-  Asections []*file.Section // Sections only in A
-  Bsections []*file.Section // Sections only in B
+const (
+  DEBUG_GROUP secGroup = iota // Sections with debug information       
+  INSTR_GROUP                 // Sections with executable instructions
+  DATA_GROUP                  // Sections with user data
+  GO_GROUP                    // Sections related to Go lang
+  COMPILER_GROUP              // Sections with compiler data
+  OTHER_GROUP                 // All other sections
+)
 
-  // Sections, that are present in both files
-  ComonSections []*SectionPair
-}
-
-// Results of compared binaries
-type Compare struct {
-  Secs map[string]*SecCompare // Key - group name
+func sectionGroup(name string) secGroup {
+  if strings.Contains(name, ".debug") {
+    return DEBUG_GROUP
+  } else if name == ".data" ||
+    name == ".bss" ||
+    name == ".rodata" {
+    return DATA_GROUP
+  } else if name == ".typelink" ||
+    name == ".gosymtab" ||
+    name == ".noptrdata" ||
+    name == ".gopclntab" ||
+    name == ".noptrbss" ||
+    name == ".itablink" {
+    return GO_GROUP
+  } else if name == ".note.go.buildid" ||
+    name == ".go.buildinfo" ||
+    name == ".note.gnu.property" ||
+    name == ".note.ABI-tag" ||
+    name == ".gnu.version" ||
+    name == ".gnu.version_r" ||
+    name == ".gnu.hash" ||
+    name == ".gcc_except_table" {
+    return COMPILER_GROUP
+  }
+  return OTHER_GROUP
 }
 
 func CountPercent(a, b uint64) float64 {
@@ -54,40 +76,7 @@ func CountRatio(a, b uint64) string {
   return "???"
 }
 
-type Report struct {
-  Stat      table.Writer
-
-  F1, F2    *file.FileInfo
-}
-
-func New(A, B *file.FileInfo) *Report{
-  r := Report{}
-  r.F1 = A
-  r.F2 = B
-
-  r.Stat     = table.NewWriter()
-  r.Stat.SetColumnConfigs([]table.ColumnConfig{
-    {Number:    1,
-     AutoMerge: true,
-     Align:     text.AlignLeft,
-     VAlign:    text.VAlignMiddle}})
-  r.Stat.SetOutputMirror(os.Stdout)
-  rowConfigAutoMerge := table.RowConfig{
-    AutoMerge:      true,
-    AutoMergeAlign: text.AlignLeft}
-  r.Stat.AppendRow(table.Row{"A", "A", A.Name, A.Name, A.Name}, rowConfigAutoMerge)
-  r.Stat.AppendRow(table.Row{"B", "B", B.Name, B.Name, B.Name}, rowConfigAutoMerge)
-  r.Stat.AppendSeparator()
-  r.Stat.AppendRow(table.Row{"", "", "A", "B", "Diff (B/A)"}, rowConfigAutoMerge)
-  r.Stat.AppendSeparator()
-  r.Stat.AppendRow(table.Row{"General info", "General info",
-    "General info", "General info", "General info"}, rowConfigAutoMerge)
-  r.Stat.AppendSeparator()
-
-  return &r
-}
-
-func (r *Report) AddTextRow(name, A, B string) {
+func AddTextRow(name, A, B string, w table.Writer) {
   d := ""
   if A != B {
     d = "!"
@@ -95,14 +84,14 @@ func (r *Report) AddTextRow(name, A, B string) {
   rowConfigAutoMerge := table.RowConfig{
     AutoMerge:      true,
     AutoMergeAlign: text.AlignLeft}
-  r.Stat.AppendRow([]interface{}{name, name, A, B, d}, rowConfigAutoMerge)
+  w.AppendRow([]interface{}{name, name, A, B, d}, rowConfigAutoMerge)
 }
 
-func (r *Report) AddIntRow(name string, A, B uint64) {
+func AddIntRow(name string, A, B uint64, w table.Writer) {
   rowConfigAutoMerge := table.RowConfig{
     AutoMerge:      true,
     AutoMergeAlign: text.AlignLeft}
-  r.Stat.AppendRow([]interface{}{
+  w.AppendRow([]interface{}{
     name,
     name,
     fmt.Sprintf("%d", A),
@@ -111,8 +100,8 @@ func (r *Report) AddIntRow(name string, A, B uint64) {
     rowConfigAutoMerge)
 }
 
-func (r *Report) AddIntRowGroup(group, name string, A, B uint64) {
-  r.Stat.AppendRow([]interface{}{
+func AddIntRowGroup(group, name string, A, B uint64, w table.Writer) {
+  w.AppendRow([]interface{}{
     group,
     name,
     fmt.Sprintf("%d", A),
@@ -120,8 +109,8 @@ func (r *Report) AddIntRowGroup(group, name string, A, B uint64) {
     fmt.Sprintf("%s", CountRatio(A, B))})
 }
 
-func (r *Report) AddIntRow1(name string, A uint64) {
-  r.Stat.AppendRow([]interface{}{
+func AddIntRow1(name string, A uint64, w table.Writer) {
+  w.AppendRow([]interface{}{
     name,
     name,
     fmt.Sprintf("%d", A),
@@ -129,8 +118,8 @@ func (r *Report) AddIntRow1(name string, A uint64) {
     ""})
 }
 
-func (r *Report) AddIntRow1Group(group, name string, A uint64) {
-  r.Stat.AppendRow([]interface{}{
+func AddIntRow1Group(group, name string, A uint64, w table.Writer) {
+  w.AppendRow([]interface{}{
     group,
     name,
     fmt.Sprintf("%d", A),
@@ -138,8 +127,8 @@ func (r *Report) AddIntRow1Group(group, name string, A uint64) {
     ""})
 }
 
-func (r *Report) AddIntRow2(name string, B uint64) {
-  r.Stat.AppendRow([]interface{}{
+func AddIntRow2(name string, B uint64, w table.Writer) {
+  w.AppendRow([]interface{}{
     name,
     name,
     "",
@@ -147,8 +136,8 @@ func (r *Report) AddIntRow2(name string, B uint64) {
     ""})
 }
 
-func (r *Report) AddIntRow2Group(group, name string, B uint64) {
-  r.Stat.AppendRow([]interface{}{
+func AddIntRow2Group(group, name string, B uint64, w table.Writer) {
+  w.AppendRow([]interface{}{
     group,
     name,
     "",
@@ -156,26 +145,86 @@ func (r *Report) AddIntRow2Group(group, name string, B uint64) {
     ""})
 }
 
-func (r *Report) AddSubtitle(name string) {
+func AddSubtitle(name string, w table.Writer) {
   rowConfigAutoMerge := table.RowConfig{
     AutoMerge:      true,
     AutoMergeAlign: text.AlignLeft}
-  r.Stat.AppendSeparator()
-  r.Stat.AppendRow(table.Row{name, name, name, name, name}, rowConfigAutoMerge)
-  r.Stat.AppendSeparator()
+  w.AppendSeparator()
+  w.AppendRow(table.Row{name, name, name, name, name}, rowConfigAutoMerge)
+  w.AppendSeparator()
 }
 
-func (r *Report) AddSeparator() {
-  r.Stat.AppendSeparator()
+func AddSeparator(w table.Writer) {
+  w.AppendSeparator()
 }
 
 
-func (r *Report) AddStatRow(name, A, B, d string) {
-  r.Stat.AppendRow([]interface{}{name, A, B, d})
+func AddStatRow(name, A, B, d string, w table.Writer) {
+  w.AppendRow([]interface{}{name, A, B, d})
 }
 
-func (r *Report) Print() {
-  r.Stat.Render()
+func printHeader(cmp *compare.Compare, w table.Writer) {
+  rowConfigAutoMerge := table.RowConfig{
+    AutoMerge:      true,
+    AutoMergeAlign: text.AlignLeft}
+  w.AppendRow(table.Row{"A", "A", cmp.A.Name, cmp.A.Name, cmp.A.Name}, rowConfigAutoMerge)
+  w.AppendRow(table.Row{"B", "B", cmp.B.Name, cmp.B.Name, cmp.B.Name}, rowConfigAutoMerge)
+  w.AppendSeparator()
+}
+
+func printGeneralInfo(cmp *compare.Compare, w table.Writer) {
+  rowConfigAutoMerge := table.RowConfig{
+    AutoMerge:      true,
+    AutoMergeAlign: text.AlignLeft}
+  w.AppendRow(table.Row{"", "", "A", "B", "Diff (B/A)"}, rowConfigAutoMerge)
+  w.AppendSeparator()
+  w.AppendRow(table.Row{"General info", "General info",
+    "General info", "General info", "General info"}, rowConfigAutoMerge)
+  w.AppendSeparator()
+  AddTextRow("Type", cmp.A.ElfType(), cmp.B.ElfType(), w)
+  AddTextRow("Debug info", cmp.A.Dbg, cmp.B.Dbg, w)
+  AddTextRow ("Sections",
+    fmt.Sprintf("%d", cmp.A.SectionNum()),
+    fmt.Sprintf("%d", cmp.B.SectionNum()), w)
+  AddTextRow ("Symbols",
+    fmt.Sprintf("%d", cmp.A.SymbolNum()),
+    fmt.Sprintf("%d", cmp.B.SymbolNum()), w)
+  AddIntRow ("Size", cmp.A.Size, cmp.B.Size, w)
+  AddSubtitle("Sections size (bytes)", w)
+}
+
+func printSectionGroup(cmp *compare.Compare, gName string, w table.Writer) {
+}
+
+func Print(cmp *compare.Compare) {
+  w := table.NewWriter()
+  w.SetColumnConfigs([]table.ColumnConfig{
+    {Number:    1,
+     AutoMerge: true,
+     Align:     text.AlignLeft,
+     VAlign:    text.VAlignMiddle}})
+
+  printHeader(cmp, w)
+  printGeneralInfo(cmp, w)
+
+//  printSectionGroup(cmp, A.InstrSec, B.InstrSec, "Instr", w)
+//  printSectionGroup(cmp, A.UDataSec, B.UDataSec, "User data", w)
+//  printSectionGroup(cmp, A.GoSec, B.GoSec, "Go data", w)
+//  printSectionGroup(cmp, A.CompilerSec, B.CompilerSec, "Compiler data", w)
+//  printSectionGroup(cmp, A.DebugSec, B.DebugSec, "Debug info", w)
+//  printSectionGroup(cmp, A.OtherSec, B.OtherSec, "Other", w)
+
+  AddSubtitle("Sections symbols number", w)
+
+//  printSymbolGroup(cmp, A.InstrSec, B.InstrSec, "Instr", w)
+//  printSymbolGroup(cmp, A.UDataSec, B.UDataSec, "User data", w)
+//  printSymbolGroup(cmp, A.GoSec, B.GoSec, "Go data", w)
+//  printSymbolGroup(cmp, A.CompilerSec, B.CompilerSec, "Compiler data", w)
+//  printSymbolGroup(cmp, A.DebugSec, B.DebugSec, "Debug info", w)
+//  printSymbolGroup(cmp, A.OtherSec, B.OtherSec, "Other", w)
+
+  w.SetOutputMirror(os.Stdout)
+  w.Render()
 }
 
 func generateGeneralInfoHtml(A, B *file.FileInfo) string {
@@ -214,8 +263,8 @@ func generateGeneralInfoHtml(A, B *file.FileInfo) string {
    A.Size,         B.Size)
 }
 
-func generateSectionsTableHtml(cmp *Compare, A, B *file.FileInfo) string {
-  secTbl := "" // Table of sections
+func generateSectionsTableHtml(cmp *compare.Compare, A, B *file.FileInfo) string {
+/*  secTbl := "" // Table of sections
   groups := [...]string{
     "Instr",
     "User data",
@@ -233,21 +282,21 @@ func generateSectionsTableHtml(cmp *Compare, A, B *file.FileInfo) string {
     aSyms := 0
     bSyms := 0
     for _, aSec := range secs.Asections {
-      secRow += fmt.Sprintf("    <tr><td>%s</td><td>%d</td><td></td><td></td>  <td>%d</td><td></td><td></td> </tr>\n", aSec.Info.Name, aSec.Info.Size, len(aSec.Symbols))
+      secRow += fmt.Sprintf("    <tr><td>%s</td><td>%d</td><td></td><td></td>  <td>%d</td><td></td><td></td> </tr>\n", aSec.Name(), aSec.Info.Size, len(aSec.Symbols))
       aSize += aSec.Info.Size
       aSyms += len(aSec.Symbols)
     }
     for _, sec := range secs.ComonSections {
       aSymNum := len(sec.A.Symbols)
       bSymNum := len(sec.B.Symbols)
-      secRow += fmt.Sprintf("    <tr><td>%s</td><td>%d</td><td>%d</td><td>%.4f</td>  <td>%d</td><td>%d</td><td>%.4f</td> </tr>\n", sec.A.Info.Name, sec.A.Info.Size, sec.B.Info.Size, CountPercent(sec.A.Info.Size, sec.B.Info.Size), aSymNum, bSymNum, CountPercent(uint64(aSymNum), uint64(bSymNum)))
+      secRow += fmt.Sprintf("    <tr><td>%s</td><td>%d</td><td>%d</td><td>%.4f</td>  <td>%d</td><td>%d</td><td>%.4f</td> </tr>\n", sec.A.Name(), sec.A.Info.Size, sec.B.Info.Size, CountPercent(sec.A.Info.Size, sec.B.Info.Size), aSymNum, bSymNum, CountPercent(uint64(aSymNum), uint64(bSymNum)))
       aSize += sec.A.Info.Size
       bSize += sec.B.Info.Size
       aSyms += aSymNum
       bSyms += bSymNum
     }
     for _, bSec := range secs.Bsections {
-      secRow += fmt.Sprintf("    <tr><td>%s</td><td></td><td>%d</td><td></td>  <td></td><td>%d</td><td></td> </tr>\n", bSec.Info.Name, bSec.Info.Size, len(bSec.Symbols))
+      secRow += fmt.Sprintf("    <tr><td>%s</td><td></td><td>%d</td><td></td>  <td></td><td>%d</td><td></td> </tr>\n", bSec.Name(), bSec.Info.Size, len(bSec.Symbols))
       bSize += bSec.Info.Size
       bSyms += len(bSec.Symbols)
     }
@@ -266,10 +315,13 @@ func generateSectionsTableHtml(cmp *Compare, A, B *file.FileInfo) string {
 %s  </table>
 `, secTbl)
   return secTbl
+*/
+  return ""
 }
 
-func (r *Report) PrintHtml(cmp *Compare) {
-  genTbl := generateGeneralInfoHtml(r.F1, r.F2)
+func PrintHtml(cmp *compare.Compare) {
+  return
+/*  genTbl := generateGeneralInfoHtml(r.F1, r.F2)
   secTbl := generateSectionsTableHtml(cmp, r.F1, r.F2)
   str := index(
     r.F1.Name,
@@ -284,6 +336,6 @@ func (r *Report) PrintHtml(cmp *Compare) {
   }
   defer ind.Close()
 
-  ind.Write([]byte(str))
+  ind.Write([]byte(str))*/
 }
 

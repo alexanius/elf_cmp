@@ -5,8 +5,6 @@ import (
   "os"
   "regexp"
   "strconv"
-
-  "elf_cmp/cmd/internal/report"
 )
 
 /*
@@ -34,10 +32,10 @@ type GcCycle struct {
   // goal heap size
 }
 
-func AnalyzeLog(filePath string) error {
+func AnalyzeLog(filePath string) ([]GcCycle, error) {
   file, err := os.Open(filePath)
   if err != nil {
-    return err
+    return nil, err
   }
   defer file.Close()
 
@@ -68,26 +66,5 @@ func AnalyzeLog(filePath string) error {
     }
   }
 
-  heapSize := make([]int64, 0)
-  heapLive := make([]int64, 0)
-  gcTimes  := make([]float64, 0)
-  for _, c := range cycles {
-    heapSize = append(heapSize, c.HeapStart)
-    heapSize = append(heapSize, c.HeapEnd)
-    heapLive = append(heapLive, c.HeapLive)
-    gcTimes = append(gcTimes, c.Time)
-  }
-
-  page := report.GcTraceReport(heapSize, heapLive, gcTimes)
-
-  os.Mkdir("report", 0750)
-  ind, err := os.Create("report/index.html")
-  if err != nil {
-    panic(err)
-  }
-  defer ind.Close()
-
-  ind.Write([]byte(page))
-
-  return nil
+  return cycles, nil
 }
